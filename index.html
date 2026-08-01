@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QR Dosya Aktar</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f1115">
+
+<style>
+  :root{ color-scheme: dark; }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{
+    margin:0; min-height:100vh; padding:24px 18px calc(24px + env(safe-area-inset-bottom));
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    background:#0f1115; color:#eee; display:flex; flex-direction:column; align-items:center;
+  }
+  h1{font-size:19px; font-weight:700; margin:0 0 4px}
+  p.sub{color:#8a90a0; margin:0 0 22px; text-align:center; font-size:13px; max-width:360px}
+  .card{width:100%; max-width:420px; background:#171a21; border:1px solid #262b36; border-radius:16px; padding:20px}
+  .tabs{display:flex; gap:8px; width:100%; max-width:420px; margin-bottom:16px}
+  .tab{flex:1; padding:12px; text-align:center; border-radius:10px; background:#171a21; border:1px solid #262b36; font-weight:700; cursor:pointer; color:#8a90a0}
+  .tab.active{background:#7dd3fc; color:#08131c; border-color:#7dd3fc}
+  #dropzone{border:2px dashed #333a4a; border-radius:12px; padding:24px 14px; text-align:center; cursor:pointer}
+  #dropzone.drag{border-color:#7dd3fc; background:#141824}
+  #fileInput{display:none}
+  #fileList{margin-top:12px; font-size:13px; color:#b8bdca}
+  #fileList div{padding:4px 0; display:flex; justify-content:space-between; gap:8px}
+  #fileList span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  button{width:100%; padding:14px; border:none; border-radius:10px; background:#7dd3fc; color:#08131c;
+    font-weight:700; font-size:15px; cursor:pointer; margin-top:14px}
+  button:disabled{opacity:.4; cursor:not-allowed}
+  button.secondary{background:#262b36; color:#eee}
+  #qrWrap{text-align:center; margin-top:16px; display:none}
+  #qrWrap img{width:250px; height:250px; border-radius:12px; background:#fff; padding:10px}
+  #qrWrap .hint{font-size:12px; color:#6b7280; margin-top:10px}
+  #video{width:100%; border-radius:12px; margin-top:14px; display:none; background:#000}
+  #scanHint{font-size:12px; color:#6b7280; text-align:center; margin-top:8px}
+  #status{margin-top:16px; font-size:13px; color:#8a90a0; text-align:center; min-height:18px}
+  #progressWrap{margin-top:14px; display:none}
+  .pfile{font-size:12px; color:#b8bdca; margin-bottom:4px; display:flex; justify-content:space-between}
+  .pbar{height:6px; background:#262b36; border-radius:4px; overflow:hidden; margin-bottom:10px}
+  .pbar > div{height:100%; width:0%; background:#7dd3fc; transition:width .15s}
+  .badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:700; margin-top:6px}
+  .badge.ok{background:#14361f; color:#5ee38b}
+  .badge.err{background:#3a1620; color:#ff8a9b}
+  .badge.wait{background:#2a2410; color:#f0c85e}
+  #resetBtn{display:none}
+</style>
+</head>
+<body>
+  <h1>QR Dosya Aktar</h1>
+  <p class="sub">Aynı WiFi ağındaki iki telefon arasında, internete çıkmadan, doğrudan dosya aktarımı</p>
+
+  <div class="tabs">
+    <div class="tab active" id="tabSend">Gönder</div>
+    <div class="tab" id="tabReceive">Al</div>
+  </div>
+
+  <div class="card" id="sendCard">
+    <div id="dropzone">
+      <div style="font-size:26px;margin-bottom:6px">📁</div>
+      <div>Dosya(lar) seç</div>
+    </div>
+    <input type="file" id="fileInput" multiple>
+    <div id="fileList"></div>
+    <button id="startSendBtn" disabled>Bağlantı Kodu Oluştur</button>
+
+    <div id="qrWrap">
+      <img id="qrImg" alt="QR">
+      <div class="hint" id="qrHint">Karşı taraf bu kodu QR okuyucuyla okutsun</div>
+    </div>
+
+    <video id="video" playsinline muted></video>
+    <div id="scanHint" style="display:none">Karşı tarafın gösterdiği YANIT kodunu şimdi okutun</div>
+    <button id="scanAnswerBtn" class="secondary" style="display:none">Yanıt Kodunu Tara</button>
+
+    <div id="status"></div>
+    <div id="progressWrap"></div>
+    <button id="resetBtn" class="secondary">Baştan Başla</button>
+  </div>
+
+  <div class="card" id="receiveCard" style="display:none">
+    <div style="text-align:center; font-size:13px; color:#b8bdca; margin-bottom:10px">
+      Gönderenin ekranındaki kodu okutmak için kamerayı başlatın
+    </div>
+    <button id="startScanBtn">Kamerayı Başlat</button>
+    <video id="videoR" playsinline muted></video>
+    <div id="qrWrapR" style="text-align:center; margin-top:16px; display:none">
+      <img id="qrImgR" alt="QR">
+      <div class="hint" style="font-size:12px; color:#6b7280; margin-top:10px">
+        Bu YANIT kodunu gönderenin kamerasına gösterin
+      </div>
+    </div>
+    <div id="statusR" style="margin-top:16px; font-size:13px; color:#8a90a0; text-align:center; min-height:18px"></div>
+    <div id="progressWrapR"></div>
+    <button id="resetBtnR" class="secondary" style="display:none">Baştan Başla</button>
+  </div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+(function(){
+  "use strict";
+  const CHUNK = 64 * 1024;          // dosya için veri kanalı parça boyutu
+  const QR_CHUNK = 900;             // tek bir QR karesine sığacak metin uzunluğu
+  const BUFFERED_LOW = 1 * 1024 * 1024; // backpressure eşiği
+
+  // ---------- Sekme geçişi ----------
+  const tabSend = document.getElementById('tabSend');
+  const tabReceive = document.getElementById('tabReceive');
+  const sendCard = document.getElementById('sendCard');
+  const receiveCard = document.getElementById('receiveCard');
+  tabSend.onclick = () => { tabSend.classList.add('active'); tabReceive.classList.remove('active'); sendCard.style.display='block'; receiveCard.style.display='none'; };
+  tabReceive.onclick = () => { tabReceive.classList.add('active'); tabSend.classList.remove('active'); receiveCard.style.display='block'; sendCard.style.display='none'; };
+
+  // ================= Ortak yardımcılar =================
+
+  function makeRTC(){
+    return new RTCPeerConnection({ iceServers: [] }); // sadece yerel ağ (host) adayları — internet gerekmez
+  }
+
+  async function waitIceComplete(pc){
+    if (pc.iceGatheringState === 'complete') return;
+    await new Promise(resolve => {
+      const check = () => { if (pc.iceGatheringState === 'complete'){ pc.removeEventListener('icegatheringstatechange', check); resolve(); } };
+      pc.addEventListener('icegatheringstatechange', check);
+      setTimeout(resolve, 4000); // 4sn sonra adayları bekletmeden devam et
+    });
+  }
+
+  async function textToQrFrames(text, tag){
+    const total = Math.ceil(text.length / QR_CHUNK) || 1;
+    const frames = [];
+    for (let i=0;i<total;i++){
+      const chunk = text.slice(i*QR_CHUNK, (i+1)*QR_CHUNK);
+      const payload = tag + '|' + i + '|' + total + '|' + chunk;
+      const qr = qrcode(0, 'L'); // 0 = boyutu otomatik seç, L = en düşük hata düzeltme (en yüksek kapasite)
+      qr.addData(payload);
+      qr.make();
+      frames.push(qr.createDataURL(6, 4));
+    }
+    return frames;
+  }
+
+  function playFrames(imgEl, frames, intervalMs){
+    let i = 0;
+    imgEl.src = frames[0];
+    if (frames.length === 1) return () => {};
+    const t = setInterval(() => { i = (i+1) % frames.length; imgEl.src = frames[i]; }, intervalMs);
+    return () => clearInterval(t);
+  }
+
+  // Kamerayı açar, jsQR ile sürekli tarar, bir 'tag' ile başlayan parçaları toplayıp birleştirir
+  function startScanning(videoEl, tag, onComplete, onStatus){
+    let stream, raf, stopped = false;
+    const chunks = {};
+    let total = null;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+      .then(s => {
+        stream = s;
+        videoEl.srcObject = s;
+        videoEl.style.display = 'block';
+        videoEl.play();
+        tick();
+      })
+      .catch(err => onStatus('Kamera açılamadı: ' + err.message, 'err'));
+
+    function tick(){
+      if (stopped) return;
+      if (videoEl.readyState === videoEl.HAVE_ENOUGH_DATA){
+        canvas.width = videoEl.videoWidth; canvas.height = videoEl.videoHeight;
+        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (code && code.data && code.data.startsWith(tag + '|')){
+          const parts = code.data.split('|');
+          const idx = parseInt(parts[1], 10);
+          const tot = parseInt(parts[2], 10);
+          const chunk = code.data.slice((tag+'|'+parts[1]+'|'+parts[2]+'|').length);
+          chunks[idx] = chunk;
+          total = tot;
+          const have = Object.keys(chunks).length;
+          onStatus('Kod okunuyor... ' + have + '/' + total, 'wait');
+          if (have === total){
+            stop();
+            const full = [];
+            for (let i=0;i<total;i++) full.push(chunks[i]);
+            onComplete(full.join(''));
+            return;
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    }
+    function stop(){
+      stopped = true;
+      if (raf) cancelAnimationFrame(raf);
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      videoEl.style.display = 'none';
+    }
+    return stop;
+  }
+
+  // ================= GÖNDER =================
+  (function(){
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const fileList = document.getElementById('fileList');
+    const startSendBtn = document.getElementById('startSendBtn');
+    const qrWrap = document.getElementById('qrWrap');
+    const qrImg = document.getElementById('qrImg');
+    const video = document.getElementById('video');
+    const scanHint = document.getElementById('scanHint');
+    const scanAnswerBtn = document.getElementById('scanAnswerBtn');
+    const status = document.getElementById('status');
+    const progressWrap = document.getElementById('progressWrap');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let selectedFiles = [];
+    let pc, channel, stopFrames, stopScan;
+
+    dropzone.onclick = () => fileInput.click();
+    dropzone.ondragover = e => { e.preventDefault(); dropzone.classList.add('drag'); };
+    dropzone.ondragleave = () => dropzone.classList.remove('drag');
+    dropzone.ondrop = e => { e.preventDefault(); dropzone.classList.remove('drag'); setFiles(e.dataTransfer.files); };
+    fileInput.onchange = () => setFiles(fileInput.files);
+
+    function setFiles(files){
+      selectedFiles = Array.from(files);
+      fileList.innerHTML = selectedFiles.map(f => `<div><span>${escapeHtml(f.name)}</span><span>${(f.size/1024/1024).toFixed(2)} MB</span></div>`).join('');
+      startSendBtn.disabled = selectedFiles.length === 0;
+    }
+
+    function setStatus(msg, kind){
+      status.innerHTML = kind ? `${msg}<br><span class="badge ${kind}">${kind==='ok'?'Tamam':kind==='err'?'Hata':'Bekleniyor'}</span>` : msg;
+    }
+
+    startSendBtn.onclick = async () => {
+      startSendBtn.disabled = true;
+      startSendBtn.textContent = 'Hazırlanıyor...';
+      try{
+        pc = makeRTC();
+        channel = pc.createDataChannel('file', { ordered: true });
+        channel.binaryType = 'arraybuffer';
+        channel.bufferedAmountLowThreshold = BUFFERED_LOW;
+        channel.onopen = () => { setStatus('Bağlantı kuruldu, gönderiliyor...'); sendAllFiles(); };
+        channel.onerror = e => setStatus('Kanal hatası: ' + (e.message||''), 'err');
+
+        pc.oniceconnectionstatechange = () => {
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected'){
+            setStatus('Bağlantı koptu. Her iki cihazın da aynı WiFi ağında olduğundan emin olun.', 'err');
+          }
+        };
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitIceComplete(pc);
+
+        const frames = await textToQrFrames(pc.localDescription.sdp, 'O');
+        qrWrap.style.display = 'block';
+        stopFrames = playFrames(qrImg, frames, 550);
+
+        scanAnswerBtn.style.display = 'block';
+        scanHint.style.display = 'block';
+        startSendBtn.textContent = 'Bağlantı Kodu Oluştur';
+        setStatus('Karşı taraf kodu okuttuktan sonra "Yanıt Kodunu Tara" butonuna basın.');
+      } catch(err){
+        setStatus('Hata: ' + err.message, 'err');
+        startSendBtn.disabled = false;
+        startSendBtn.textContent = 'Bağlantı Kodu Oluştur';
+      }
+    };
+
+    scanAnswerBtn.onclick = () => {
+      scanAnswerBtn.disabled = true;
+      stopScan = startScanning(video, 'A', async (sdp) => {
+        try{
+          await pc.setRemoteDescription({ type: 'answer', sdp });
+          setStatus('Yanıt alındı, bağlanılıyor...', 'wait');
+          if (stopFrames) stopFrames();
+          qrWrap.style.display = 'none';
+        } catch(err){
+          setStatus('Yanıt işlenemedi: ' + err.message, 'err');
+        }
+      }, (msg, kind) => setStatus(msg, kind));
+    };
+
+    async function sendAllFiles(){
+      progressWrap.style.display = 'block';
+      const manifest = selectedFiles.map(f => ({ name: f.name, size: f.size, type: f.type || 'application/octet-stream' }));
+      channel.send(JSON.stringify({ kind: 'manifest', files: manifest }));
+
+      const bars = {};
+      manifest.forEach((f, idx) => {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = `<div class="pfile"><span>${escapeHtml(f.name)}</span><span id="pct_${idx}">0%</span></div><div class="pbar"><div id="bar_${idx}"></div></div>`;
+        progressWrap.appendChild(wrap);
+      });
+
+      for (let i=0;i<selectedFiles.length;i++){
+        const file = selectedFiles[i];
+        channel.send(JSON.stringify({ kind:'file-start', index:i }));
+        let sent = 0;
+        let offset = 0;
+        while (offset < file.size){
+          const slice = file.slice(offset, offset + CHUNK);
+          const buf = await slice.arrayBuffer();
+          if (channel.bufferedAmount > BUFFERED_LOW){
+            await new Promise(res => { channel.onbufferedamountlow = () => { channel.onbufferedamountlow = null; res(); }; });
+          }
+          channel.send(buf);
+          offset += buf.byteLength;
+          sent = offset;
+          const pct = Math.min(100, Math.round(sent / file.size * 100));
+          document.getElementById('bar_'+i).style.width = pct + '%';
+          document.getElementById('pct_'+i).textContent = pct + '%';
+        }
+        channel.send(JSON.stringify({ kind:'file-end', index:i }));
+      }
+      setStatus('Tüm dosyalar gönderildi ✅', 'ok');
+      resetBtn.style.display = 'block';
+    }
+
+    resetBtn.onclick = () => location.reload();
+
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  })();
+
+  // ================= AL =================
+  (function(){
+    const startScanBtn = document.getElementById('startScanBtn');
+    const videoR = document.getElementById('videoR');
+    const qrWrapR = document.getElementById('qrWrapR');
+    const qrImgR = document.getElementById('qrImgR');
+    const statusR = document.getElementById('statusR');
+    const progressWrapR = document.getElementById('progressWrapR');
+    const resetBtnR = document.getElementById('resetBtnR');
+
+    let pc, receivedManifest = null, currentIndex = -1, currentChunks = [], currentReceived = 0;
+
+    function setStatus(msg, kind){
+      statusR.innerHTML = kind ? `${msg}<br><span class="badge ${kind}">${kind==='ok'?'Tamam':kind==='err'?'Hata':'Bekleniyor'}</span>` : msg;
+    }
+
+    startScanBtn.onclick = () => {
+      startScanBtn.disabled = true;
+      startScanning(videoR, 'O', async (sdp) => {
+        try{
+          pc = makeRTC();
+          pc.ondatachannel = (ev) => setupChannel(ev.channel);
+          pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected'){
+              setStatus('Bağlantı koptu. Aynı WiFi ağında olduğunuzdan emin olun.', 'err');
+            }
+          };
+          await pc.setRemoteDescription({ type: 'offer', sdp });
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          await waitIceComplete(pc);
+
+          const frames = await textToQrFrames(pc.localDescription.sdp, 'A');
+          qrWrapR.style.display = 'block';
+          playFrames(qrImgR, frames, 550);
+          setStatus('Bu kodu gönderenin kamerasına gösterin...', 'wait');
+        } catch(err){
+          setStatus('Hata: ' + err.message, 'err');
+        }
+      }, (msg, kind) => setStatus(msg, kind));
+    };
+
+    function setupChannel(channel){
+      channel.binaryType = 'arraybuffer';
+      channel.onopen = () => { setStatus('Bağlantı kuruldu, dosyalar bekleniyor...'); qrWrapR.style.display='none'; };
+      channel.onmessage = (ev) => {
+        if (typeof ev.data === 'string'){
+          const msg = JSON.parse(ev.data);
+          if (msg.kind === 'manifest'){
+            receivedManifest = msg.files;
+            progressWrapR.style.display = 'block';
+            receivedManifest.forEach((f, idx) => {
+              const wrap = document.createElement('div');
+              wrap.innerHTML = `<div class="pfile"><span>${escapeHtml(f.name)}</span><span id="pctR_${idx}">0%</span></div><div class="pbar"><div id="barR_${idx}"></div></div>`;
+              progressWrapR.appendChild(wrap);
+            });
+          } else if (msg.kind === 'file-start'){
+            currentIndex = msg.index;
+            currentChunks = [];
+            currentReceived = 0;
+          } else if (msg.kind === 'file-end'){
+            const f = receivedManifest[currentIndex];
+            const blob = new Blob(currentChunks, { type: f.type });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = f.name; document.body.appendChild(a); a.click(); a.remove();
+            document.getElementById('pctR_'+currentIndex).textContent = 'İndirildi';
+            if (currentIndex === receivedManifest.length - 1){
+              setStatus('Tüm dosyalar alındı ✅', 'ok');
+              resetBtnR.style.display = 'block';
+            }
+          }
+        } else {
+          currentChunks.push(ev.data);
+          currentReceived += ev.data.byteLength;
+          const f = receivedManifest[currentIndex];
+          const pct = Math.min(100, Math.round(currentReceived / f.size * 100));
+          document.getElementById('barR_'+currentIndex).style.width = pct + '%';
+          document.getElementById('pctR_'+currentIndex).textContent = pct + '%';
+        }
+      };
+    }
+
+    resetBtnR.onclick = () => location.reload();
+
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  })();
+
+  // ================= Service worker (offline için) =================
+  if ('serviceWorker' in navigator){
+    window.addEventListener('load', () => navigator.serviceWorker.register('service-worker.js').catch(()=>{}));
+  }
+})();
+</script>
+</body>
+</html>
